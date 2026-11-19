@@ -219,7 +219,11 @@ def _plain_output(records: list[ModelPricing], unit: str) -> None:
         console.print("Nessun modello corrisponde ai filtri richiesti.", style="yellow")
         return
     unit_label = "USD / 1M token" if unit == "usd" else "crediti AI / 1M token"
-    table = Table(title=f"Modelli GitHub Copilot | prezzi live | {unit_label}", box=None, header_style="bold cyan")
+    table = Table(
+        title=f"Modelli GitHub Copilot | prezzi live | v{__version__} | {unit_label}",
+        box=None,
+        header_style="bold cyan",
+    )
     table.add_column("Modello")
     table.add_column("Contesto")
     table.add_column("Tipo")

@@ -15,6 +15,7 @@ Questo documento descrive lo stato attuale e il piano per distribuire ModelsComp
 - [x] Codice unico con `prompt_toolkit` e `rich`.
 - [x] Percorsi di configurazione XDG/APPDATA, Downloads XDG e cache aggiornamenti per piattaforma.
 - [x] Layout responsive con larghezza calcolata, troncamento per display width e modalità compatta.
+- [x] Badge versione installata nel banner, con indicazione della versione disponibile quando c'è un aggiornamento.
 - [x] Ricerca, aiuto contestuale, toggle USD/crediti e indicatore di posizione.
 - [x] Controllo aggiornamenti GitHub, badge, tasto `U`, comandi `--check-updates` e `--update`.
 - [x] Download atomico, verifica SHA-256, estrazione sicura e sostituzione del binario dopo l'uscita.

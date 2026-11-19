@@ -1,10 +1,12 @@
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.utils import get_cwidth
 
+from modelscompare import __version__
 from modelscompare.models import ModelPricing
 from modelscompare import terminal_ui
 from modelscompare.terminal_ui import ModelBrowser, choose_options
@@ -122,7 +124,31 @@ def test_browser_header_has_graphical_modelscompare_wordmark() -> None:
 
     assert "MODELS" in header
     assert "COMPARE" in header
+    assert f"v{__version__}" in header
     assert "╭" in header or "+" in header
+
+
+def test_header_shows_installed_version_and_available_update(monkeypatch) -> None:
+    monkeypatch.setattr(terminal_ui, "_terminal_size", lambda: (80, 40))
+    browser = ModelBrowser(
+        _models(),
+        favorites=set(),
+        update_info=SimpleNamespace(is_newer=True, version_label="0.3.0"),
+    )
+
+    header = "".join(text for _style, text in browser._header())
+
+    assert f"v{__version__}" in header
+    assert "↑ v0.3.0" in header
+
+
+def test_header_keeps_version_visible_on_narrow_terminals(monkeypatch) -> None:
+    monkeypatch.setattr(terminal_ui, "_terminal_size", lambda: (40, 30))
+    browser = ModelBrowser(_models(), favorites=set())
+
+    header = "".join(text for _style, text in browser._header())
+
+    assert f"v{__version__}" in header
 
 
 def test_select_models_and_compare_only_the_selection() -> None:
@@ -287,6 +313,7 @@ def test_help_overlay_lists_units_search_and_updates(monkeypatch) -> None:
     assert "Unità" in text or "unità" in text
     assert "Cerca" in text
     assert "aggiornamenti" in text
+    assert f"v{__version__}" in text
 
 
 def test_unit_key_toggles_and_persists_selection() -> None:

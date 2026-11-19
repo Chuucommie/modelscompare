@@ -12,6 +12,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.utils import get_cwidth
 
+from modelscompare import __version__
 from modelscompare.models import ModelPricing
 
 
@@ -236,11 +237,12 @@ class ModelBrowser:
         fragments.extend(_fit_segments(first_line, content_width, "class:banner.title"))
         fragments.append(("class:banner.frame", " │\n"))
 
-        second_line: list[tuple[str, str]] = [("class:badge.live", " ● LIVE ")]
+        second_line: list[tuple[str, str]] = []
+        version_label = f"v{__version__}"
         if self.update_info is not None and getattr(self.update_info, "is_newer", False):
-            second_line.append(
-                ("class:badge.update", f" ↑ {self.update_info.version_label} ")
-            )
+            version_label += f" ↑ v{self.update_info.version_label}"
+        second_line.append(("class:badge.version", f" {version_label} "))
+        second_line.append(("class:badge.live", " ● LIVE "))
         if self.comparing:
             second_line.append(("class:badge.compare", f" confronto ({selected_count}) "))
         elif self.favorites_only:
@@ -447,6 +449,8 @@ class ModelBrowser:
             ("class:help.text", "Setup • Esporta • Ricarica i prezzi live"),
             ("class:help.key", "U"),
             ("class:help.text", "Cerca aggiornamenti nelle release GitHub"),
+            ("class:help.key", "Versione"),
+            ("class:help.text", f"v{__version__} installata"),
             ("class:help.key", "H / ?"),
             ("class:help.text", "Chiudi questo aiuto"),
             ("class:help.key", "Q / Ctrl+C"),
@@ -755,11 +759,11 @@ class ModelBrowser:
             "banner.logoaccent": "bold #E0B76A",
             "banner.title": "#9AB2B8",
             "badge.live": "bold bg:#123528 #4ECCA3",
+            "badge.version": "bold bg:#1B2B36 #B8E3EA",
             "badge.unit": "bold bg:#332912 #F5CE69",
             "badge.mode": "bold bg:#162E3B #7AD2E6",
             "badge.compare": "bold bg:#3B1E32 #FF80AB",
             "badge.search": "bold bg:#1C3B2A #A5E887",
-            "badge.update": "bold bg:#3B2E12 #FFD166",
             "keys.cap": "bold #5CE1E6",
             "keys.desc": "#8EA6AC",
             "table.header": "bold #7BE0AD",

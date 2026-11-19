@@ -35,7 +35,7 @@ Al primo avvio il setup chiede solo quali modelli ti interessano e quali formati
 
 ## Interfaccia e Navigazione
 
-L'interfaccia a terminale offre un banner adattivo, badge di stato, tabella a colonne (`MODELLO`, `CONTESTO`, `TIPO`, `INPUT`, `CACHED-R`, `CACHED-W`, `OUTPUT`) e scheda dettagli del modello evidenziato. Su terminali stretti le colonne cached vengono nascoste e i dettagli restano disponibili nella scheda; nulla viene tagliato a metà carattere, anche con emoji.
+L'interfaccia a terminale offre un banner adattivo, badge di stato, tabella a colonne (`MODELLO`, `CONTESTO`, `TIPO`, `INPUT`, `CACHED-R`, `CACHED-W`, `OUTPUT`) e scheda dettagli del modello evidenziato. Il badge `v0.2.2` nel banner mostra sempre la versione installata; se è disponibile un aggiornamento diventa `v0.2.2 ↑ v0.2.3`. Su terminali stretti le colonne cached vengono nascoste e i dettagli restano disponibili nella scheda; nulla viene tagliato a metà carattere, anche con emoji.
 
 | Tasto | Azione |
 | --- | --- |
@@ -145,8 +145,8 @@ Gli asset pubblicati sono:
 Gli eseguibili non sono firmati digitalmente. Windows può mostrare SmartScreen; macOS può richiedere l'apertura esplicita la prima volta. Per una release, crea e invia un tag:
 
 ```sh
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.2.2
+git push origin v0.2.2
 ```
 
 Il workflow esegue prima i test su tutti e tre i sistemi, poi compila e allega gli asset alla release. Il piano dettagliato per macOS/Linux, terminali supportati, rischi e prossimi passi è in [`docs/PLATFORMS.md`](docs/PLATFORMS.md).
