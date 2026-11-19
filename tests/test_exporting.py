@@ -46,8 +46,26 @@ def test_csv_and_excel_export_only_the_four_cost_types(tmp_path) -> None:
     assert sheet.cell(2, link_column).hyperlink.target.endswith("/gpt-example")
     assert "Ragionamento" in headers
     assert "Finestra contesto" in headers
-    assert list(sheet.tables) == ["ModelsCompare"]
+    assert list(sheet.tables) == []
+    assert sheet.auto_filter.ref == sheet.dimensions
     assert not any("blended" in header.casefold() for header in headers)
+
+
+def test_excel_export_survives_edit_and_filter_round_trip(tmp_path) -> None:
+    excel_path = export_records([_record()], ["xlsx"], downloads_dir=tmp_path)[0]
+
+    workbook = load_workbook(excel_path)
+    sheet = workbook.active
+    sheet["A2"] = "GPT Example edited"
+    sheet.auto_filter.add_filter_column(0, ["GPT Example edited"])
+    workbook.save(excel_path)
+
+    workbook = load_workbook(excel_path)
+    sheet = workbook.active
+    assert sheet["A2"].value == "GPT Example edited"
+    assert sheet.auto_filter.ref == sheet.dimensions
+    assert list(sheet.tables) == []
+    assert sheet.auto_filter.filterColumn[0].filters.filter == ["GPT Example edited"]
 
 
 def test_export_respects_selected_formats_and_downloads_directory(tmp_path) -> None:

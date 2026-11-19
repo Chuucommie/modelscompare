@@ -5,7 +5,6 @@ from pathlib import Path
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from modelscompare.models import ModelPricing
 
@@ -142,16 +141,7 @@ def export_records(
                 link_cell.hyperlink = record.artificial_analysis_url
                 link_cell.font = Font(color="087F8C", underline="single")
 
-        if records:
-            table = Table(displayName="ModelsCompare", ref=sheet.dimensions)
-            table.tableStyleInfo = TableStyleInfo(
-                name="TableStyleMedium2",
-                showFirstColumn=False,
-                showLastColumn=False,
-                showRowStripes=True,
-                showColumnStripes=False,
-            )
-            sheet.add_table(table)
+        sheet.auto_filter.ref = sheet.dimensions
         sheet.freeze_panes = "A2"
         for column_index, (header, _attribute, kind) in enumerate(columns, start=1):
             values = [
