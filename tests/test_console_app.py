@@ -1,11 +1,13 @@
 from decimal import Decimal
 import json
+from pathlib import Path
 
 import pytest
 
 from modelscompare.console_app import _arguments, _restart_arguments, filter_records
 from modelscompare.models import ModelPricing
 from modelscompare.preferences import Preferences, save_preferences
+from modelscompare.installer import InstallResult
 from modelscompare.updates import UpdateInfo, UpdateResult
 
 
@@ -218,12 +220,32 @@ def test_export_failure_returns_error_code_and_message(monkeypatch, tmp_path, ca
     assert "Export non riuscito" in capsys.readouterr().out
 
 
+def test_install_command_is_exposed_and_reports_result(monkeypatch, capsys) -> None:
+    from modelscompare import console_app
+
+    result = InstallResult(
+        installed=True,
+        command_path=Path("/tmp/modelscompare"),
+        binary_path=Path("/tmp/modelscompare-bin"),
+        path_updated=True,
+        message="Comando installato correttamente.",
+        needs_new_terminal=True,
+    )
+    monkeypatch.setattr(console_app, "install_command", lambda **_kwargs: result)
+
+    assert console_app.main(["--install"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Comando installato correttamente." in output
+    assert "modelscompare" in output
+
+
 def test_version_flag_prints_package_version(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         _arguments(["--version"])
 
     assert exit_info.value.code == 0
-    assert "modelscompare 0.2.2" in capsys.readouterr().out
+    assert "modelscompare 0.2.3" in capsys.readouterr().out
 
 
 def test_check_updates_json_reports_no_release(monkeypatch, capsys) -> None:
@@ -234,7 +256,7 @@ def test_check_updates_json_reports_no_release(monkeypatch, capsys) -> None:
     assert console_app.main(["--check-updates", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["current"] == "0.2.2"
+    assert payload["current"] == "0.2.3"
     assert payload["update_available"] is False
 
 

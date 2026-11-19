@@ -17,4 +17,5 @@
 - [x] Responsive terminal layout, search, help overlay, live unit toggle, JSON output, and explicit update commands implemented.
 - [x] GitHub Releases update checker with SHA-256 verification, cross-platform self-update, and user-data preservation implemented.
 - [x] Multipiattaforma build script and CI matrix for Windows, macOS, and Linux implemented.
+- [x] `modelscompare --install` installs the command into the user PATH on Windows, macOS, and Linux.
 - [ ] Live interactive launch deferred; run `modelscompare` in a network-connected terminal to try it.

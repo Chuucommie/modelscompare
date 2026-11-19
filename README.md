@@ -21,6 +21,29 @@ tar -xzf modelscompare-linux-x64.tar.gz
 
 Su macOS, se Gatekeeper blocca il binario non firmato, usa `Impostazioni di Sistema → Privacy e sicurezza → Apri comunque` oppure esegui `xattr -d com.apple.quarantine ./modelscompare` dopo aver verificato il checksum.
 
+### Installa il comando `modelscompare` nel PATH
+
+Dopo aver estratto l’archivio, installa il comando una sola volta:
+
+```sh
+# macOS / Linux
+./modelscompare --install
+
+# Windows PowerShell
+.\ModelsCompare.exe --install
+```
+
+Poi apri un nuovo terminale e scrivi `modelscompare` da qualsiasi cartella:
+
+```sh
+modelscompare
+```
+
+- **macOS/Linux:** il binario viene copiato in `~/.local/share/modelscompare/modelscompare`, collegato come `~/.local/bin/modelscompare` e, se necessario, aggiunge `~/.local/bin` al profilo della shell (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish` o `~/.profile`).
+- **Windows:** il binario viene copiato in `%LOCALAPPDATA%\Programs\modelscompare\modelscompare.exe` e la cartella viene aggiunta al PATH utente.
+- Con `--no-path-update` il comando viene installato senza modificare il PATH.
+- Con `pipx install .` il comando viene già creato da `pipx`; `--install` lo rileva e non duplica nulla.
+
 ### Da sorgente o con pipx
 
 ```sh
@@ -35,7 +58,7 @@ Al primo avvio il setup chiede solo quali modelli ti interessano e quali formati
 
 ## Interfaccia e Navigazione
 
-L'interfaccia a terminale offre un banner adattivo, badge di stato, tabella a colonne (`MODELLO`, `CONTESTO`, `TIPO`, `INPUT`, `CACHED-R`, `CACHED-W`, `OUTPUT`) e scheda dettagli del modello evidenziato. Il badge `v0.2.2` nel banner mostra sempre la versione installata; se è disponibile un aggiornamento diventa `v0.2.2 ↑ v0.2.3`. Su terminali stretti le colonne cached vengono nascoste e i dettagli restano disponibili nella scheda; nulla viene tagliato a metà carattere, anche con emoji.
+L'interfaccia a terminale offre un banner adattivo, badge di stato, tabella a colonne (`MODELLO`, `CONTESTO`, `TIPO`, `INPUT`, `CACHED-R`, `CACHED-W`, `OUTPUT`) e scheda dettagli del modello evidenziato. Il badge `v0.2.3` nel banner mostra sempre la versione installata; se è disponibile un aggiornamento diventa `v0.2.3 ↑ v0.2.4`. Su terminali stretti le colonne cached vengono nascoste e i dettagli restano disponibili nella scheda; nulla viene tagliato a metà carattere, anche con emoji.
 
 | Tasto | Azione |
 | --- | --- |
@@ -83,6 +106,7 @@ Filtri testuali case-insensitive si applicano come sottostringhe. Sono disponibi
 - `--export` / `--no-export`: autorizza o disabilita l'export. Il flag esplicito `--export` autorizza l'export anche in batch; l'azione interattiva `E` chiede conferma. `--no-export` disabilita anche l'azione `E`.
 - `--output-dir`: cartella di destinazione degli export (default: `Downloads`).
 - `--version`: stampa la versione installata.
+- `--install`: installa il comando `modelscompare` nel PATH dell’utente; `--no-path-update` evita di modificare il PATH.
 
 `--clear-selection` cancella i preferiti salvati e `--config-file` seleziona un profilo diverso.
 
@@ -145,8 +169,8 @@ Gli asset pubblicati sono:
 Gli eseguibili non sono firmati digitalmente. Windows può mostrare SmartScreen; macOS può richiedere l'apertura esplicita la prima volta. Per una release, crea e invia un tag:
 
 ```sh
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.3
+git push origin v0.2.3
 ```
 
 Il workflow esegue prima i test su tutti e tre i sistemi, poi compila e allega gli asset alla release. Il piano dettagliato per macOS/Linux, terminali supportati, rischi e prossimi passi è in [`docs/PLATFORMS.md`](docs/PLATFORMS.md).

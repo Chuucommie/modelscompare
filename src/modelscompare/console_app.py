@@ -15,6 +15,7 @@ from rich.table import Table
 from modelscompare import __version__
 from modelscompare.artificial_analysis import fetch_model_metadata, match_model_metadata
 from modelscompare.exporting import export_records
+from modelscompare.installer import InstallError, install_command
 from modelscompare.models import ModelPricing
 from modelscompare.paths import default_downloads_dir
 from modelscompare.preferences import Preferences, default_preferences_path, load_preferences, save_preferences
@@ -35,6 +36,7 @@ esempi:
   modelscompare --search reasoning --unit credits --limit 10
   modelscompare --json --sort cached_read > prezzi.json
   modelscompare --export --output-dir ./report
+  modelscompare --install
   modelscompare --check-updates
   modelscompare --update
 """
@@ -76,6 +78,8 @@ def _arguments(argv: list[str] | None = None) -> argparse.Namespace:
     update_group = parser.add_mutually_exclusive_group()
     update_group.add_argument("--check-updates", action="store_true", help="controlla le release GitHub e esce")
     update_group.add_argument("--update", action="store_true", help="scarica e installa l'ultima release")
+    update_group.add_argument("--install", action="store_true", help="installa il comando modelscompare nel PATH dell'utente")
+    parser.add_argument("--no-path-update", action="store_true", help="installa il comando senza modificare il PATH")
     parser.add_argument("--no-update-check", action="store_true", help="non controllare gli aggiornamenti all'avvio")
     parser.add_argument("--no-auto-update", action="store_true", help="avvisa degli aggiornamenti ma non installarli automaticamente")
     args = parser.parse_args(argv)
@@ -435,6 +439,38 @@ def _run_update_command(console: Console, as_json: bool, restart_args: list[str]
     return 0 if result.scheduled else 2
 
 
+def _run_install_command(
+    console: Console,
+    as_json: bool,
+    *,
+    update_path: bool,
+) -> int:
+    try:
+        result = install_command(update_path=update_path)
+    except InstallError as error:
+        if as_json:
+            _print_json({"error": str(error)})
+        else:
+            console.print(f"Installazione non riuscita: {error}", style="red")
+        return 1
+
+    payload = {
+        "installed": result.installed,
+        "command_path": str(result.command_path) if result.command_path else None,
+        "binary_path": str(result.binary_path) if result.binary_path else None,
+        "path_updated": result.path_updated,
+        "needs_new_terminal": result.needs_new_terminal,
+        "message": result.message,
+    }
+    if as_json:
+        _print_json(payload)
+    else:
+        console.print(result.message, style="green" if result.installed else "yellow")
+        if result.needs_new_terminal:
+            console.print("Apri un nuovo terminale e scrivi `modelscompare` per avviarlo.", style="cyan")
+    return 0 if result.installed else 1
+
+
 def _auto_update(
     info: UpdateInfo,
     preferences: Preferences,
@@ -472,6 +508,12 @@ def main(argv: list[str] | None = None) -> int:
         return _report_update_check(console, args.json)
     if args.update:
         return _run_update_command(console, args.json, _restart_arguments(args))
+    if args.install:
+        return _run_install_command(
+            console,
+            args.json,
+            update_path=not args.no_path_update,
+        )
 
     config_path = args.config_file or default_preferences_path()
     legacy_path = args.selection_file or config_path.with_name("selection.json")

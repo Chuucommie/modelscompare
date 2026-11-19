@@ -9,6 +9,28 @@ Browser da terminale per i prezzi live dei modelli GitHub Copilot, con quattro c
 
 Serve una connessione Internet per caricare i prezzi live.
 
+## Installa il comando `modelscompare`
+
+Per usarlo da qualsiasi cartella, installalo una sola volta:
+
+```powershell
+# Windows
+.\ModelsCompare.exe --install
+```
+
+```sh
+# macOS / Linux
+./modelscompare --install
+```
+
+Poi apri un nuovo terminale e scrivi:
+
+```sh
+modelscompare
+```
+
+Il comando viene installato nella cartella utente e aggiunto al PATH. I preferiti e le impostazioni restano nella configurazione utente e non vengono toccati dagli aggiornamenti.
+
 ## Comandi utili
 
 - Frecce per navigare; `Invio` apre la scheda Artificial Analysis.

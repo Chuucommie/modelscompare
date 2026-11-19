@@ -16,6 +16,7 @@ Questo documento descrive lo stato attuale e il piano per distribuire ModelsComp
 - [x] Percorsi di configurazione XDG/APPDATA, Downloads XDG e cache aggiornamenti per piattaforma.
 - [x] Layout responsive con larghezza calcolata, troncamento per display width e modalità compatta.
 - [x] Badge versione installata nel banner, con indicazione della versione disponibile quando c'è un aggiornamento.
+- [x] Comando `modelscompare --install` per installare l’eseguibile nel PATH utente su Windows, macOS e Linux.
 - [x] Ricerca, aiuto contestuale, toggle USD/crediti e indicatore di posizione.
 - [x] Controllo aggiornamenti GitHub, badge, tasto `U`, comandi `--check-updates` e `--update`.
 - [x] Download atomico, verifica SHA-256, estrazione sicura e sostituzione del binario dopo l'uscita.
@@ -66,6 +67,21 @@ Questo documento descrive lo stato attuale e il piano per distribuire ModelsComp
 - Architetture: `x64` e `arm64`.
 - Aggiornamento automatico con lo stesso script POSIX di macOS.
 - In futuro: pacchetto `.deb`/`.rpm`, Flatpak o repository APT.
+
+### Installazione del comando
+
+Le build standalone includono `--install`:
+
+```sh
+./modelscompare --install        # macOS/Linux
+.\ModelsCompare.exe --install   # Windows PowerShell
+```
+
+- macOS/Linux: binario in `~/.local/share/modelscompare/modelscompare`, link in `~/.local/bin/modelscompare`, PATH nel profilo della shell se necessario.
+- Windows: `%LOCALAPPDATA%\Programs\modelscompare\modelscompare.exe` e PATH utente aggiornato tramite registro.
+- `--no-path-update` installa senza modificare il PATH.
+
+Dopo l’installazione, un nuovo terminale può avviare il programma con `modelscompare` da qualsiasi directory. Gli aggiornamenti sostituiscono il binario installato e mantengono la configurazione utente.
 
 ### Installazioni da sorgente
 
