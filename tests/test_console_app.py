@@ -223,7 +223,7 @@ def test_version_flag_prints_package_version(capsys) -> None:
         _arguments(["--version"])
 
     assert exit_info.value.code == 0
-    assert "modelscompare 0.2.0" in capsys.readouterr().out
+    assert "modelscompare 0.2.1" in capsys.readouterr().out
 
 
 def test_check_updates_json_reports_no_release(monkeypatch, capsys) -> None:
@@ -234,7 +234,7 @@ def test_check_updates_json_reports_no_release(monkeypatch, capsys) -> None:
     assert console_app.main(["--check-updates", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload["current"] == "0.2.0"
+    assert payload["current"] == "0.2.1"
     assert payload["update_available"] is False
 
 

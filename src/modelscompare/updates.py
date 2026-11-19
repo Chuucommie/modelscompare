@@ -31,6 +31,7 @@ DEFAULT_REPO = "Chuucommie/modelscompare"
 RELEASES_URL = "https://api.github.com/repos/{repo}/releases/latest"
 MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024
 _BINARY_NAMES = ("modelscompare", "modelscompare.exe", "ModelsCompare", "ModelsCompare.exe")
+_ALL_ARCH_TOKENS = {"x86_64", "x64", "amd64", "arm64", "aarch64", "i386", "i686"}
 
 
 class UpdateError(RuntimeError):
@@ -200,6 +201,10 @@ def select_asset(
 
         is_windows_exe = resolved_system == "windows" and name.endswith(".exe")
         if not any(token in name for token in os_tokens) and not is_windows_exe:
+            continue
+
+        asset_arch_tokens = {token for token in _ALL_ARCH_TOKENS if token in name}
+        if asset_arch_tokens and not asset_arch_tokens & arch_tokens:
             continue
 
         score = 10

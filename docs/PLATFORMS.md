@@ -19,7 +19,7 @@ Questo documento descrive lo stato attuale e il piano per distribuire ModelsComp
 - [x] Controllo aggiornamenti GitHub, badge, tasto `U`, comandi `--check-updates` e `--update`.
 - [x] Download atomico, verifica SHA-256, estrazione sicura e sostituzione del binario dopo l'uscita.
 - [x] Export CSV/Excel validato, sanitizzato e scritto senza sovrascrivere file esistenti.
-- [x] Workflow GitHub Actions con test su Windows/macOS/Linux e build su tag.
+- [x] Workflow GitHub Actions con test su Windows/macOS/Linux e build native per Windows x64, Linux x64/arm64, macOS arm64/Intel.
 - [x] Script unico `scripts/build_release.py` per creare archivi e checksum su tutte le piattaforme.
 - [ ] Firma del codice Windows e notarizzazione macOS (richiede certificati e account a pagamento).
 - [ ] Pacchetto Homebrew e repository APT/PPA (opzionali, dopo la prima release multipiattaforma).
@@ -127,9 +127,9 @@ Asset prodotti:
 ModelsCompare.exe
 modelscompare-windows-x64.zip
 modelscompare-linux-x64.tar.gz
-modelscompare-linux-arm64.tar.gz      # se il runner lo produce
+modelscompare-linux-arm64.tar.gz
 modelscompare-macos-arm64.tar.gz
-modelscompare-macos-x64.tar.gz         # se il runner lo produce
+modelscompare-macos-x64.tar.gz
 *.sha256
 ```
 

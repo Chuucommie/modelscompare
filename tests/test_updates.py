@@ -128,6 +128,21 @@ def test_select_asset_matches_operating_system_and_architecture() -> None:
     assert select_asset(assets, system="Windows", machine="AMD64").name == "modelscompare-windows-x64.zip"
 
 
+def test_select_asset_does_not_choose_wrong_architecture() -> None:
+    assets = [
+        ReleaseAsset("modelscompare-macos-arm64.tar.gz", "https://example.test/macos-arm64"),
+        ReleaseAsset("modelscompare-macos-x64.tar.gz", "https://example.test/macos-x64"),
+    ]
+
+    assert select_asset(assets, system="Darwin", machine="arm64").name == "modelscompare-macos-arm64.tar.gz"
+    assert select_asset(assets, system="Darwin", machine="x86_64").name == "modelscompare-macos-x64.tar.gz"
+    assert select_asset(
+        [ReleaseAsset("modelscompare-macos-arm64.tar.gz", "https://example.test/macos-arm64")],
+        system="Darwin",
+        machine="x86_64",
+    ) is None
+
+
 def test_download_asset_verifies_sha256_and_writes_file(tmp_path) -> None:
     content = b"portable-binary"
     asset = ReleaseAsset(

@@ -145,8 +145,8 @@ Gli asset pubblicati sono:
 Gli eseguibili non sono firmati digitalmente. Windows può mostrare SmartScreen; macOS può richiedere l'apertura esplicita la prima volta. Per una release, crea e invia un tag:
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 Il workflow esegue prima i test su tutti e tre i sistemi, poi compila e allega gli asset alla release. Il piano dettagliato per macOS/Linux, terminali supportati, rischi e prossimi passi è in [`docs/PLATFORMS.md`](docs/PLATFORMS.md).
