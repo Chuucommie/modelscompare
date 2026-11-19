@@ -1,11 +1,11 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 PackageIdentifier: Chuucommie.ModelsCompare
-PackageVersion: 0.2.2
+PackageVersion: 0.2.3
 Installers:
 - Architecture: x64
   InstallerType: portable
-  InstallerUrl: https://github.com/Chuucommie/modelscompare/releases/download/v0.2.2/ModelsCompare.exe
-  InstallerSha256: 3F0652BCC157BADD4BD5434B77C0323E64C87DE44AF089A6D9A9B8938AD823F4
+  InstallerUrl: https://github.com/Chuucommie/modelscompare/releases/download/v0.2.3/ModelsCompare.exe
+  InstallerSha256: 6FDF5ADABF53A13A7937194BC8D30478C3DB482154BA44C917429B3DED14F151
   Commands:
   - ModelsCompare
 ManifestType: installer
