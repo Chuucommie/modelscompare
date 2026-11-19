@@ -532,6 +532,15 @@ def install_update(
     if not info.is_newer:
         return UpdateResult(False, "ModelsCompare è già aggiornato.", restart_required=False)
 
+    if not is_frozen():
+        return UpdateResult(
+            False,
+            "Installazione da sorgente: aggiorna con "
+            "`python -m pip install --upgrade modelscompare` oppure scarica "
+            f"la release da {info.html_url or 'GitHub Releases'}.",
+            restart_required=False,
+        )
+
     selected = asset or select_asset(
         info.assets,
         system=system,
@@ -541,15 +550,6 @@ def install_update(
         return UpdateResult(
             False,
             f"Nessun pacchetto compatibile nella release {info.version_label}.",
-            restart_required=False,
-        )
-
-    if not is_frozen():
-        return UpdateResult(
-            False,
-            "Installazione da sorgente: aggiorna con "
-            "`python -m pip install --upgrade modelscompare` oppure scarica "
-            f"la release da {info.html_url or 'GitHub Releases'}.",
             restart_required=False,
         )
 
