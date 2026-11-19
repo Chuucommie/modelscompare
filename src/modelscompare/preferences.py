@@ -17,6 +17,8 @@ class Preferences:
     display_unit: str
     export_formats: list[str]
     setup_completed: bool
+    check_updates: bool = True
+    auto_update: bool = True
 
     @classmethod
     def defaults(cls) -> "Preferences":
@@ -31,6 +33,8 @@ class Preferences:
             display_unit="usd",
             export_formats=["csv", "xlsx"],
             setup_completed=False,
+            check_updates=True,
+            auto_update=True,
         )
 
 
@@ -73,8 +77,8 @@ def load_preferences(path: Path | None = None, legacy_path: Path | None = None) 
                 raise ValueError("The saved sort option is not supported.")
             elif field.name == "display_unit" and value not in {"usd", "credits"}:
                 raise ValueError("The saved display unit must be 'usd' or 'credits'.")
-            elif field.name == "setup_completed" and not isinstance(value, bool):
-                raise ValueError("The saved setup status must be a boolean.")
+            elif field.name in {"setup_completed", "check_updates", "auto_update"} and not isinstance(value, bool):
+                raise ValueError(f"The saved '{field.name}' preference must be a boolean.")
             setattr(preferences, field.name, value)
         return preferences
 

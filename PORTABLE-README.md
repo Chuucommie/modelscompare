@@ -1,9 +1,25 @@
-# ModelsCompare for Windows
+# ModelsCompare
 
-1. Extract this ZIP to a folder.
-2. Double-click `ModelsCompare.exe` or run it from PowerShell.
-3. Use the arrow keys to browse; press `M` to select models and `C` to compare them.
+Browser da terminale per i prezzi live dei modelli GitHub Copilot, con quattro costi separati (input, cached read, cached write, output) e metadati di reasoning/contesto.
 
-An internet connection is required to load current model pricing. Preferences are stored in your Windows profile; exports are saved in `Downloads`.
+## Avvio
 
-This executable is unsigned. Windows may show a SmartScreen prompt because it is distributed directly rather than through a signed installer.
+- **Windows:** doppio clic su `ModelsCompare.exe` oppure eseguilo da PowerShell.
+- **macOS / Linux:** apri il terminale nella cartella estratta ed esegui `./modelscompare`.
+
+Serve una connessione Internet per caricare i prezzi live.
+
+## Comandi utili
+
+- Frecce per navigare; `Invio` apre la scheda Artificial Analysis.
+- `Spazio` aggiunge/rimuove un preferito; `M` seleziona per il confronto; `C` mostra il confronto.
+- `T` cambia unità USD/crediti; `/` cerca; `H` mostra l'aiuto completo.
+- `U` cerca aggiornamenti; `Q` esce.
+
+La configurazione personale (preferiti, filtri, formati di export) è salvata nel profilo utente e non viene toccata dagli aggiornamenti. Gli export finiscono in `Downloads` oppure nella cartella scelta con `--output-dir`.
+
+## Aggiornamenti
+
+Le build standalone controllano le release GitHub all'avvio e possono aggiornarsi automaticamente preservando i dati. Ogni archivio è accompagnato da un file `.sha256`; l'app verifica il checksum prima di installare.
+
+Gli eseguibili non sono firmati digitalmente: Windows può mostrare un avviso SmartScreen e macOS può richiedere l'apertura esplicita la prima volta.

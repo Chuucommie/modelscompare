@@ -17,6 +17,7 @@ class ModelPricing:
     usd_per_credit: Decimal | None = None
     artificial_analysis_url: str = ""
     is_reasoning: bool = False
+    reasoning_known: bool = True
     context_window: str = ""
 
     @property
@@ -58,4 +59,6 @@ class ModelPricing:
 
     @property
     def reasoning_label(self) -> str:
-        return "Reasoning" if self.is_reasoning else "Standard"
+        if self.is_reasoning:
+            return "Reasoning"
+        return "Standard" if self.reasoning_known else "N/D"

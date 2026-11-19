@@ -10,8 +10,109 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
+from prompt_toolkit.utils import get_cwidth
 
 from modelscompare.models import ModelPricing
+
+
+def _terminal_size() -> tuple[int, int]:
+    try:
+        size = get_app().output.get_size()
+        return max(40, size.columns), max(10, size.rows)
+    except Exception:
+        return 100, 30
+
+
+def _clip(text: str, width: int) -> str:
+    """Truncate text by terminal display width, not by code points."""
+
+    if width <= 0:
+        return ""
+    if get_cwidth(text) <= width:
+        return text
+    if width <= 3:
+        return "." * width
+    result: list[str] = []
+    used = 0
+    for character in text:
+        character_width = get_cwidth(character)
+        if used + character_width > width - 3:
+            break
+        result.append(character)
+        used += character_width
+    return "".join(result) + "..."[: max(0, width - used)]
+
+
+def _pad(text: str, width: int, align: str = "left") -> str:
+    text = _clip(text, width)
+    gap = max(0, width - get_cwidth(text))
+    if align == "right":
+        return " " * gap + text
+    if align == "center":
+        left = gap // 2
+        return " " * left + text + " " * (gap - left)
+    return text + " " * gap
+
+
+def _fit_segments(
+    segments: Sequence[tuple[str, str]],
+    width: int,
+    pad_style: str,
+) -> list[tuple[str, str]]:
+    fragments: list[tuple[str, str]] = []
+    used = 0
+    for style, text in segments:
+        if used >= width:
+            break
+        clipped = _clip(text, width - used)
+        if clipped:
+            fragments.append((style, clipped))
+            used += get_cwidth(clipped)
+    if used < width:
+        fragments.append((pad_style, " " * (width - used)))
+    return fragments
+
+
+def _search_blob(record: ModelPricing) -> str:
+    return " ".join(
+        (
+            record.name,
+            record.provider,
+            record.category,
+            record.tier,
+            record.release_status,
+            record.threshold,
+            record.context_window,
+            record.reasoning_label,
+        )
+    ).casefold()
+
+
+def _footer_lines(items: Sequence[tuple[str, str]], width: int) -> list[list[tuple[str, str]]]:
+    lines: list[list[tuple[str, str]]] = []
+    current: list[tuple[str, str]] = []
+    used = 0
+    for cap, description in items:
+        cap_text = f" [{cap}] "
+        desc_text = f"{description}  "
+        item_width = get_cwidth(cap_text) + get_cwidth(desc_text)
+        if current and used + item_width > width:
+            lines.append(current)
+            current = []
+            used = 0
+        if item_width > width:
+            desc_text = _clip(desc_text, max(0, width - get_cwidth(cap_text)))
+            item_width = get_cwidth(cap_text) + get_cwidth(desc_text)
+        current.extend(
+            (
+                ("class:keys.cap", cap_text),
+                ("class:keys.desc", desc_text),
+            )
+        )
+        used += item_width
+    if current:
+        lines.append(current)
+    return lines
 
 
 class ModelBrowser:
@@ -21,33 +122,58 @@ class ModelBrowser:
         favorites: set[str],
         display_unit: str = "usd",
         on_favorites_changed: Callable[[set[str]], None] | None = None,
+        on_unit_changed: Callable[[str], None] | None = None,
+        on_search_changed: Callable[[str], None] | None = None,
         open_url: Callable[[str], Any] = webbrowser.open,
         input: Any = None,
         output: Any = None,
+        search_text: str = "",
+        update_info: Any = None,
+        favorites_only: bool = False,
     ) -> None:
         self.records = list(records)
         self.favorites = {name.casefold() for name in favorites}
         self.display_unit = display_unit
         self.on_favorites_changed = on_favorites_changed or (lambda _favorites: None)
+        self.on_unit_changed = on_unit_changed or (lambda _unit: None)
+        self.on_search_changed = on_search_changed or (lambda _search: None)
         self.open_url = open_url
         self.input = input
         self.output = output
         self.index = 0
-        self.favorites_only = False
+        self.favorites_only = favorites_only
         self.comparison_selection: set[str] = set()
+        self.comparison_keys: set[str] = set()
         self.comparing = False
+        self.show_help = False
+        self.search_text = search_text
+        self.update_info = update_info
         self.result: str | None = None
 
     @property
     def visible_records(self) -> list[ModelPricing]:
+        records = self.records
+        if self.search_text.strip():
+            query = self.search_text.strip().casefold()
+            records = [record for record in records if query in _search_blob(record)]
         if self.comparing:
             return [
-                record for record in self.records
-                if record.name.casefold() in self.comparison_selection
+                record for record in records
+                if self._record_key(record) in self.comparison_keys
             ]
         if not self.favorites_only:
-            return self.records
-        return [record for record in self.records if record.name.casefold() in self.favorites]
+            return records
+        return [record for record in records if record.name.casefold() in self.favorites]
+
+    def _record_key(self, record: ModelPricing) -> str:
+        return "|".join(
+            (
+                record.name.casefold(),
+                record.provider.casefold(),
+                record.tier.casefold(),
+                record.threshold.casefold(),
+            )
+        )
 
     @property
     def selected_record(self) -> ModelPricing | None:
@@ -64,76 +190,170 @@ class ModelBrowser:
         if value is None:
             return "N/A"
         if self.display_unit == "usd":
-            return f"${value:,.4f}"
-        return f"{value:,.2f} cr"
+            if abs(value) >= Decimal("0.0001"):
+                decimals = 4
+            elif abs(value) >= Decimal("0.000001"):
+                decimals = 6
+            else:
+                decimals = 8
+            return f"${value:,.{decimals}f}"
+        if abs(value) >= Decimal("0.01"):
+            decimals = 2
+        elif abs(value) >= Decimal("0.0001"):
+            decimals = 4
+        else:
+            decimals = 6
+        return f"{value:,.{decimals}f} cr"
 
     def _header(self) -> FormattedText:
+        width, _height = _terminal_size()
+        box_width = min(width, 122)
+        content_width = max(20, box_width - 5)
         visible = self.visible_records
         count = len(visible)
-        selected_count = len(self.comparison_selection)
+        selected_count = len(self.comparison_keys)
         unit = "USD / 1M token" if self.display_unit == "usd" else "crediti AI / 1M token"
+        position = f"{min(self.index + 1, count)}/{count}" if count else "0/0"
 
         fragments: list[tuple[str, str]] = [
-            ("class:banner.frame", " ╭────────────────────────────────────────────────────────────────────────────────────────╮\n"),
+            ("class:banner.frame", " ╭" + "─" * (box_width - 3) + "╮\n"),
             ("class:banner.frame", " │ "),
+        ]
+
+        first_line: list[tuple[str, str]] = [
             ("class:banner.brand", "⚡ MODELS"),
             ("class:banner.brand", " "),
             ("class:banner.logoaccent", "COMPARE"),
-            ("class:banner.title", "  •  GitHub Copilot Live Pricing & Model Intelligence            "),
-            ("class:banner.frame", "│\n"),
-            ("class:banner.frame", " │ "),
-            ("class:badge.live", " ● LIVE "),
-            ("class:banner.title", f" {count} modelli  •  "),
-            ("class:badge.unit", f" {unit} "),
-            ("class:banner.title", "  •  "),
+            ("class:banner.title", "  •  GitHub Copilot Live Pricing"),
         ]
-        if self.comparing:
-            fragments.extend([
-                ("class:badge.compare", f" confronto ({selected_count} modelli) "),
-                ("class:banner.title", " [Esc per tornare alla lista] "),
-            ])
-        elif self.favorites_only:
-            fragments.extend([
-                ("class:badge.mode", f" PREFERITI ({count}) "),
-                ("class:banner.title", "                                      "),
-            ])
+        compact_header = content_width < 60
+        if self.search_text.strip():
+            first_line.append(("class:badge.search", f"  🔎 {self.search_text.strip()} "))
+        elif compact_header:
+            first_line.append(("class:banner.title", f"  {count} modelli  {position}"))
         else:
-            fragments.extend([
-                ("class:badge.mode", " TUTTI I MODELLI "),
-                ("class:banner.title", "                                       "),
-            ])
-        fragments.extend([
-            ("class:banner.frame", "│\n"),
-            ("class:banner.frame", " ╰────────────────────────────────────────────────────────────────────────────────────────╯\n"),
-        ])
+            first_line.append(("class:banner.title", f"  •  {count} modelli"))
+        fragments.extend(_fit_segments(first_line, content_width, "class:banner.title"))
+        fragments.append(("class:banner.frame", " │\n"))
+
+        second_line: list[tuple[str, str]] = [("class:badge.live", " ● LIVE ")]
+        if self.update_info is not None and getattr(self.update_info, "is_newer", False):
+            second_line.append(
+                ("class:badge.update", f" ↑ {self.update_info.version_label} ")
+            )
+        if self.comparing:
+            second_line.append(("class:badge.compare", f" confronto ({selected_count}) "))
+        elif self.favorites_only:
+            second_line.append(("class:badge.mode", f" PREFERITI ({count}) "))
+        else:
+            second_line.append(("class:badge.mode", " TUTTI I MODELLI "))
+        second_line.extend(
+            (
+                ("class:badge.unit", f" {unit} "),
+            )
+        )
+        if not compact_header:
+            second_line.append(("class:banner.title", f"  {position} "))
+        fragments.append(("class:banner.frame", " │ "))
+        fragments.extend(_fit_segments(second_line, content_width, "class:banner.title"))
+        fragments.append(("class:banner.frame", " │\n"))
+        fragments.append(("class:banner.frame", " ╰" + "─" * (box_width - 3) + "╯\n"))
         return FormattedText(fragments)
 
+    def _layout(self, width: int) -> dict[str, Any]:
+        if width >= 112:
+            return {
+                "model": max(18, min(32, width - 91)),
+                "ctx": 14,
+                "type": 12,
+                "cost": 11,
+                "cached": 11,
+                "show_cached": True,
+                "show_ctx": True,
+                "type_short": False,
+            }
+        if width >= 100:
+            return {
+                "model": max(16, min(30, width - 84)),
+                "ctx": 12,
+                "type": 9,
+                "cost": 11,
+                "cached": 10,
+                "show_cached": True,
+                "show_ctx": True,
+                "type_short": True,
+            }
+        if width >= 78:
+            return {
+                "model": max(14, min(40, width - 58)),
+                "ctx": 10,
+                "type": 9,
+                "cost": 11,
+                "cached": 0,
+                "show_cached": False,
+                "show_ctx": True,
+                "type_short": True,
+            }
+        return {
+            "model": max(2, min(48, width - 38)),
+            "ctx": 0,
+            "type": 1,
+            "cost": 11,
+            "cached": 0,
+            "show_cached": False,
+            "show_ctx": False,
+            "type_short": True,
+        }
+
+    def _type_label(self, record: ModelPricing, short: bool, tiny: bool = False) -> str:
+        if tiny:
+            if not record.reasoning_known:
+                return "?"
+            return "R" if record.is_reasoning else "S"
+        if not record.reasoning_known:
+            return "N/D"
+        if short:
+            return "Reasoning" if record.is_reasoning else "Standard"
+        return "🧠 Reasoning" if record.is_reasoning else "Standard"
+
     def _row_fragments(self) -> FormattedText:
+        if self.show_help:
+            return self._help_fragments()
+
         visible = self.visible_records
+        width, height = _terminal_size()
         if not visible:
-            if self.comparing:
-                return FormattedText([("class:muted", "\n Nessun modello selezionato per il confronto. Premi Esc per tornare all'elenco completo.\n")])
-            return FormattedText([("class:muted", "\n Nessun preferito salvato. Premi A per tornare all'elenco di tutti i modelli.\n")])
+            if self.search_text.strip():
+                message = "\n Nessun modello corrisponde alla ricerca. Premi Esc per pulire la ricerca.\n"
+            elif self.comparing:
+                message = "\n Nessun modello selezionato per il confronto. Premi Esc per tornare all'elenco completo.\n"
+            else:
+                if self.records and self.favorites_only:
+                    message = "\n Nessun preferito salvato. Premi A per tornare all'elenco di tutti i modelli.\n"
+                else:
+                    message = "\n Nessun modello corrisponde ai filtri. Modifica i filtri o premi S per il setup.\n"
+            return FormattedText([("class:muted", message)])
 
-        size = get_app().output.get_size()
-        width, height = size.columns, size.rows
-
-        ctx_w = 14
-        type_w = 13
-        cost_w = 10
-        cached_w = 11
-        model_w = max(14, min(26, width - 74))
-        table_width = model_w + 68
+        layout = self._layout(width)
+        model_w = layout["model"]
+        ctx_w = layout["ctx"]
+        type_w = layout["type"]
+        cost_w = layout["cost"]
+        cached_w = layout["cached"]
 
         fragments: list[tuple[str, str]] = []
-
-        header = (
-            f"   › ★ ✓  {'MODELLO':<{model_w}}  {'CONTESTO':<{ctx_w}}  "
-            f"{'TIPO':<{type_w}}  {'INPUT':>{cost_w}}  {'CACHED-R':>{cached_w}}  "
-            f"{'CACHED-W':>{cached_w}}  {'OUTPUT':>{cost_w}}\n"
-        )
+        header = "  › ★ ✓  " + _pad("MODELLO", model_w)
+        if layout["show_ctx"]:
+            header += "  " + _pad("CONTESTO", ctx_w)
+        header += "  " + _pad("T" if type_w <= 1 else "TIPO", type_w, "center" if type_w <= 2 else "left")
+        header += "  " + _pad("INPUT", cost_w, "right")
+        if layout["show_cached"]:
+            header += "  " + _pad("CACHED-R", cached_w, "right")
+            header += "  " + _pad("CACHED-W", cached_w, "right")
+        header += "  " + _pad("OUTPUT", cost_w, "right") + "\n"
+        total_width = get_cwidth(header.rstrip("\n"))
         fragments.append(("class:table.header", header))
-        fragments.append(("class:table.divider", f"  {'─' * table_width}\n"))
+        fragments.append(("class:table.divider", "  " + "─" * max(0, total_width - 2) + "\n"))
 
         display_height = max(1, height - 13)
         start = max(0, min(self.index - display_height // 2, len(visible) - display_height))
@@ -143,112 +363,214 @@ class ModelBrowser:
             record = visible[row_index]
             selected = row_index == self.index
             favorite = record.name.casefold() in self.favorites
-            in_compare = record.name.casefold() in self.comparison_selection
+            in_compare = self._record_key(record) in self.comparison_keys
 
             cursor = "›" if selected else " "
             star = "★" if favorite else "·"
             check = "✓" if in_compare else "·"
-
-            name = record.name
-            if len(name) > model_w:
-                name = name[: model_w - 3] + "..."
-
-            ctx = record.context_label
-            if len(ctx) > ctx_w:
-                ctx = ctx[: ctx_w - 2] + ".."
-
-            type_label = "🧠 Reasoning" if record.is_reasoning else "Standard"
-
+            name = _pad(record.name, model_w)
+            type_label = self._type_label(record, layout["type_short"], type_w <= 1)
             input_val = self._format_cost(record, "input")
             cached_r_val = self._format_cost(record, "cached_read")
             cached_w_val = self._format_cost(record, "cache_write")
             output_val = self._format_cost(record, "output")
 
             if selected:
-                row_str = (
-                    f"  {cursor} {star} {check}  {name:<{model_w}}  {ctx:<{ctx_w}}  "
-                    f"{type_label:<{type_w}}  {input_val:>{cost_w}}  {cached_r_val:>{cached_w}}  "
-                    f"{cached_w_val:>{cached_w}}  {output_val:>{cost_w}}\n"
-                )
-                fragments.append(("class:selected", row_str))
-            else:
-                fragments.extend([
+                row = f"  {cursor} {star} {check}  {name}"
+                if layout["show_ctx"]:
+                    row += "  " + _pad(record.context_label, ctx_w)
+                row += "  " + _pad(type_label, type_w, "center" if type_w <= 2 else "left")
+                row += "  " + _pad(input_val, cost_w, "right")
+                if layout["show_cached"]:
+                    row += "  " + _pad(cached_r_val, cached_w, "right")
+                    row += "  " + _pad(cached_w_val, cached_w, "right")
+                row += "  " + _pad(output_val, cost_w, "right") + "\n"
+                fragments.append(("class:selected", row))
+                continue
+
+            fragments.extend(
+                (
                     ("class:row.cursor", f"  {cursor} "),
                     ("class:row.star_active" if favorite else "class:row.star_inactive", f"{star} "),
                     ("class:row.check_active" if in_compare else "class:row.check_inactive", f"{check}  "),
-                    ("class:row.name", f"{name:<{model_w}}  "),
-                    ("class:row.context_long" if "long" in ctx.casefold() else "class:row.context_def", f"{ctx:<{ctx_w}}  "),
-                    ("class:row.reasoning_on" if record.is_reasoning else "class:row.reasoning_off", f"{type_label:<{type_w}}  "),
-                    ("class:row.cost_input", f"{input_val:>{cost_w}}  "),
-                    ("class:row.cost_cached", f"{cached_r_val:>{cached_w}}  "),
-                    ("class:row.cost_na" if cached_w_val == "N/A" else "class:row.cost_write", f"{cached_w_val:>{cached_w}}  "),
-                    ("class:row.cost_output", f"{output_val:>{cost_w}}\n"),
-                ])
+                    ("class:row.name", f"{name}  "),
+                )
+            )
+            if layout["show_ctx"]:
+                context_text = _pad(record.context_label, ctx_w)
+                context_style = (
+                    "class:row.context_long"
+                    if "long" in context_text.casefold()
+                    else "class:row.context_def"
+                )
+                fragments.append((context_style, f"{context_text}  "))
+            if not record.reasoning_known:
+                type_style = "class:row.cost_na"
+            else:
+                type_style = "class:row.reasoning_on" if record.is_reasoning else "class:row.reasoning_off"
+            fragments.append((type_style, f"{_pad(type_label, type_w, 'center' if type_w <= 2 else 'left')}  "))
+            fragments.append(("class:row.cost_input", f"{_pad(input_val, cost_w, 'right')}  "))
+            if layout["show_cached"]:
+                fragments.append(("class:row.cost_cached", f"{_pad(cached_r_val, cached_w, 'right')}  "))
+                fragments.append(
+                    (
+                        "class:row.cost_na" if cached_w_val == "N/A" else "class:row.cost_write",
+                        f"{_pad(cached_w_val, cached_w, 'right')}  ",
+                    )
+                )
+            fragments.append(("class:row.cost_output", f"{_pad(output_val, cost_w, 'right')}\n"))
 
+        return FormattedText(fragments)
+
+    def _help_fragments(self) -> FormattedText:
+        width, _height = _terminal_size()
+        box_width = min(width, 122)
+        content_width = max(20, box_width - 5)
+        lines = [
+            ("class:help.key", "↑/↓ Home/End PgUp/PgDn"),
+            ("class:help.text", "Naviga nell'elenco"),
+            ("class:help.key", "Space"),
+            ("class:help.text", "Aggiungi/rimuovi preferito (★)"),
+            ("class:help.key", "M"),
+            ("class:help.text", "Seleziona il modello per il confronto (✓)"),
+            ("class:help.key", "C"),
+            ("class:help.text", "Mostra il confronto selezionato / torna alla lista"),
+            ("class:help.key", "A"),
+            ("class:help.text", "Alterna tutti i modelli e i preferiti"),
+            ("class:help.key", "T"),
+            ("class:help.text", "Cambia unità di visualizzazione USD / crediti AI"),
+            ("class:help.key", "/"),
+            ("class:help.text", "Cerca per nome, provider, categoria o stato"),
+            ("class:help.key", "Enter"),
+            ("class:help.text", "Apri la scheda Artificial Analysis del modello"),
+            ("class:help.key", "S E R"),
+            ("class:help.text", "Setup • Esporta • Ricarica i prezzi live"),
+            ("class:help.key", "U"),
+            ("class:help.text", "Cerca aggiornamenti nelle release GitHub"),
+            ("class:help.key", "H / ?"),
+            ("class:help.text", "Chiudi questo aiuto"),
+            ("class:help.key", "Q / Ctrl+C"),
+            ("class:help.text", "Esci"),
+        ]
+        fragments: list[tuple[str, str]] = [
+            ("class:card.frame", " ╭─"), ("class:card.title", " Aiuto "),
+            ("class:card.frame", "─" * max(0, box_width - 11) + "╮\n"),
+        ]
+        pairs = list(zip(lines[1::2], lines[2::2]))
+        for key, description in pairs:
+            fragments.append(("class:card.frame", " │ "))
+            key_text = _pad(key[1], 22)
+            fragments.append((key[0], key_text))
+            fragments.append((description[0], _pad(description[1], content_width - 22)))
+            fragments.append(("class:card.frame", " │\n"))
+        fragments.append(("class:card.frame", " ╰" + "─" * (box_width - 3) + "╯"))
         return FormattedText(fragments)
 
     def _detail_card(self) -> FormattedText:
         record = self.selected_record
-        size = get_app().output.get_size()
-        width = max(80, size.columns - 4)
-        box_width = min(width, 102)
-        inner_width = box_width - 4
+        width, _height = _terminal_size()
+        box_width = min(width, 122)
+        content_width = max(20, box_width - 5)
 
         if record is None:
             return FormattedText([
-                ("class:card.frame", f" ╭─ Dettagli {'─' * (inner_width - 9)}╮\n"),
-                ("class:card.frame", " │ "), ("class:muted", "Nessun modello disponibile".ljust(inner_width)), ("class:card.frame", " │\n"),
-                ("class:card.frame", " │ "), ("class:muted", "".ljust(inner_width)), ("class:card.frame", " │\n"),
-                ("class:card.frame", f" ╰{'─' * (inner_width + 2)}╯"),
+                ("class:card.frame", " ╭─ Dettagli " + "─" * max(0, box_width - 14) + "╮\n"),
+                ("class:card.frame", " │ "), ("class:muted", _pad("Nessun modello disponibile", content_width)),
+                ("class:card.frame", " │\n"),
+                ("class:card.frame", " │ "), ("class:muted", " " * content_width), ("class:card.frame", " │\n"),
+                ("class:card.frame", " ╰" + "─" * (box_width - 3) + "╯"),
             ])
 
-        title_str = f" Dettagli Modello: {record.name} "
-        if len(title_str) > inner_width - 4:
-            title_str = title_str[:inner_width - 7] + "... "
-        top_dashes = inner_width - len(title_str)
-
+        title = _clip(f" Dettagli Modello: {record.name} ", content_width)
         line1_items = [
             f"Provider: {record.provider or 'N/D'}",
             f"Tier: {record.tier or 'Default'}",
-            f"Soglia: {record.threshold or 'N/A'}",
         ]
         if record.category:
-            line1_items.append(f"Cat: {record.category}")
-        line1_str = "   •   ".join(line1_items)
-        if len(line1_str) > inner_width:
-            line1_str = line1_str[:inner_width - 3] + "..."
-        line1_pad = inner_width - len(line1_str)
+            line1_items.append(f"Categoria: {record.category}")
+        line1_items.append(f"Soglia: {record.threshold or 'N/D'}")
+        line1 = "   •   ".join(line1_items)
 
-        reasoning_str = "🧠 Reasoning" if record.is_reasoning else "Standard"
-        ctx_win = record.context_window or ("≤ 272K" if record.threshold else "Standard")
-        aa_url = record.artificial_analysis_url or "N/D"
-        line2_str = f"Tipo: {reasoning_str}   •   Finestra: {ctx_win}   •   AA: {aa_url}"
-        if len(line2_str) > inner_width:
-            line2_str = line2_str[:inner_width - 3] + "..."
-        line2_pad = inner_width - len(line2_str)
+        threshold = record.threshold if record.threshold.casefold() not in {"", "not applicable"} else ""
+        context_window = record.context_window or threshold or "N/D"
+        link_state = "disponibile" if record.artificial_analysis_url else "N/D"
+        line2 = (
+            f"Tipo: {record.reasoning_label}   •   Finestra: {context_window}"
+            f"   •   Scheda AA: {link_state}"
+        )
 
         return FormattedText([
-            ("class:card.frame", " ╭─"), ("class:card.title", title_str), ("class:card.frame", f"{'─' * max(0, top_dashes)}╮\n"),
-            ("class:card.frame", " │ "), ("class:card.value", line1_str), ("class:card.value", " " * max(0, line1_pad)), ("class:card.frame", " │\n"),
-            ("class:card.frame", " │ "), ("class:card.value", line2_str), ("class:card.value", " " * max(0, line2_pad)), ("class:card.frame", " │\n"),
-            ("class:card.frame", f" ╰{'─' * (inner_width + 2)}╯"),
+            ("class:card.frame", " ╭─"), ("class:card.title", title),
+            ("class:card.frame", "─" * max(0, box_width - 4 - get_cwidth(title)) + "╮\n"),
+            ("class:card.frame", " │ "), ("class:card.value", _pad(line1, content_width)),
+            ("class:card.frame", " │\n"),
+            ("class:card.frame", " │ "), ("class:card.value", _pad(line2, content_width)),
+            ("class:card.frame", " │\n"),
+            ("class:card.frame", " ╰" + "─" * (box_width - 3) + "╯"),
         ])
 
     def _footer(self) -> FormattedText:
-        sel_count = len(self.comparison_selection)
-        return FormattedText([
-            ("class:keys.cap", " [↑/↓] "), ("class:keys.desc", "Naviga  "),
-            ("class:keys.cap", " [M] "), ("class:keys.desc", "Seleziona  "),
-            ("class:keys.cap", " [C] "), ("class:keys.desc", f"Confronta ({sel_count})  "),
-            ("class:keys.cap", " [Space] "), ("class:keys.desc", "Preferito  "),
-            ("class:keys.cap", " [Enter] "), ("class:keys.desc", "Scheda AA  "),
-            ("class:keys.cap", " [A] "), ("class:keys.desc", "Tutti/Pref  "),
-            ("class:keys.cap", " [S] "), ("class:keys.desc", "Setup  "),
-            ("class:keys.cap", " [E] "), ("class:keys.desc", "Export  "),
-            ("class:keys.cap", " [R] "), ("class:keys.desc", "Ricarica  "),
-            ("class:keys.cap", " [Esc] "), ("class:keys.desc", "Reset  "),
-            ("class:keys.cap", " [Q] "), ("class:keys.desc", "Esci"),
-        ])
+        width, _height = _terminal_size()
+        if self.show_help:
+            return FormattedText([
+                ("class:keys.cap", " [H] "), ("class:keys.desc", "Chiudi aiuto  "),
+                ("class:keys.cap", " [Q] "), ("class:keys.desc", "Esci"),
+            ])
+
+        sel_count = len(self.comparison_keys)
+        compare_label = "Lista" if self.comparing else f"Confronta ({sel_count})"
+        if width < 50:
+            items: list[tuple[str, str]] = [
+                ("↑/↓", "Naviga"),
+                ("Space", "Preferito"),
+                ("M", "Seleziona"),
+                ("C", compare_label),
+                ("H", "Aiuto"),
+                ("Q", "Esci"),
+            ]
+        elif width < 80:
+            items = [
+                ("↑/↓", "Naviga"),
+                ("Space", "Preferito"),
+                ("M", "Seleziona"),
+                ("C", compare_label),
+                ("/", "Cerca"),
+                ("T", f"Unità {self.display_unit.upper()}"),
+                ("H", "Aiuto"),
+                ("Q", "Esci"),
+            ]
+        else:
+            items = [
+                ("↑/↓", "Naviga"),
+                ("Space", "Preferito"),
+                ("M", "Seleziona"),
+                ("C", compare_label),
+                ("/", "Cerca"),
+                ("T", f"Unità {self.display_unit.upper()}"),
+                ("H", "Aiuto"),
+            ]
+            if self.search_text.strip() or self.comparing:
+                items.append(("Esc", "Pulisci/Vista"))
+            items.extend(
+                (
+                    ("Enter", "Scheda AA"),
+                    ("A", "Tutti/Pref"),
+                    ("S", "Setup"),
+                    ("E", "Export"),
+                    ("R", "Ricarica"),
+                )
+            )
+            if self.update_info is not None and getattr(self.update_info, "is_newer", False):
+                items.append(("U", f"Aggiorna {self.update_info.version_label}"))
+            else:
+                items.append(("U", "Aggiornamenti"))
+            items.append(("Q", "Esci"))
+
+        fragments: list[tuple[str, str]] = []
+        for line in _footer_lines(items, width):
+            fragments.extend(line)
+            fragments.append(("", "\n"))
+        return FormattedText(fragments)
 
     def create_application(self) -> Application[str]:
         bindings = KeyBindings()
@@ -260,42 +582,60 @@ class ModelBrowser:
 
         @bindings.add("up")
         def _up(event) -> None:
+            if self.show_help:
+                return
             move(-1)
             event.app.invalidate()
 
         @bindings.add("down")
         def _down(event) -> None:
+            if self.show_help:
+                return
             move(1)
             event.app.invalidate()
 
         @bindings.add("home")
         def _home(event) -> None:
+            if self.show_help:
+                return
             self.index = 0
             event.app.invalidate()
 
         @bindings.add("end")
         def _end(event) -> None:
+            if self.show_help:
+                return
             self.index = max(0, len(self.visible_records) - 1)
             event.app.invalidate()
 
         @bindings.add("pageup")
         def _page_up(event) -> None:
+            if self.show_help:
+                return
             move(-10)
             event.app.invalidate()
 
         @bindings.add("pagedown")
         def _page_down(event) -> None:
+            if self.show_help:
+                return
             move(10)
             event.app.invalidate()
 
         @bindings.add("enter")
         def _open_selected(event) -> None:
+            if self.show_help:
+                self.show_help = False
+                event.app.invalidate()
+                return
             record = self.selected_record
             if record and record.artificial_analysis_url:
                 self.open_url(record.artificial_analysis_url)
 
         @bindings.add(" ")
         def _toggle_favorite(event) -> None:
+            if self.show_help:
+                return
             record = self.selected_record
             if record is None:
                 return
@@ -311,50 +651,98 @@ class ModelBrowser:
 
         @bindings.add("a")
         def _toggle_view(event) -> None:
+            if self.show_help:
+                return
             self.favorites_only = not self.favorites_only
             self.index = min(self.index, max(0, len(self.visible_records) - 1))
             event.app.invalidate()
 
         @bindings.add("m")
         def _toggle_comparison_selection(event) -> None:
+            if self.show_help:
+                return
             record = self.selected_record
             if record is None:
                 return
-            key = record.name.casefold()
-            if key in self.comparison_selection:
-                self.comparison_selection.remove(key)
+            row_key = self._record_key(record)
+            if row_key in self.comparison_keys:
+                self.comparison_keys.remove(row_key)
             else:
-                self.comparison_selection.add(key)
+                self.comparison_keys.add(row_key)
+            self.comparison_selection = {
+                candidate.name.casefold()
+                for candidate in self.records
+                if self._record_key(candidate) in self.comparison_keys
+            }
             event.app.invalidate()
 
         @bindings.add("c")
         def _toggle_comparison_view(event) -> None:
+            if self.show_help:
+                return
             if self.comparing:
                 self.comparing = False
                 self.index = 0
-            elif self.comparison_selection:
+            elif self.comparison_keys:
                 self.comparing = True
                 self.index = 0
             event.app.invalidate()
 
+        @bindings.add("t")
+        def _toggle_unit(event) -> None:
+            if self.show_help:
+                return
+            self.display_unit = "credits" if self.display_unit == "usd" else "usd"
+            self.on_unit_changed(self.display_unit)
+            event.app.invalidate()
+
+        @bindings.add("/")
+        def _search(event) -> None:
+            if not self.show_help:
+                event.app.exit(result="search")
+
+        @bindings.add("u")
+        def _updates(event) -> None:
+            if not self.show_help:
+                event.app.exit(result="update")
+
+        @bindings.add("h")
+        @bindings.add("?")
+        def _toggle_help(event) -> None:
+            self.show_help = not self.show_help
+            event.app.invalidate()
+
         @bindings.add("escape")
         def _return_to_list(event) -> None:
+            if self.show_help:
+                self.show_help = False
+                event.app.invalidate()
+                return
             if self.comparing:
                 self.comparing = False
+                self.index = 0
+                event.app.invalidate()
+                return
+            if self.search_text:
+                self.search_text = ""
+                self.on_search_changed("")
                 self.index = 0
                 event.app.invalidate()
 
         @bindings.add("s")
         def _setup(event) -> None:
-            event.app.exit(result="setup")
+            if not self.show_help:
+                event.app.exit(result="setup")
 
         @bindings.add("e")
         def _export(event) -> None:
-            event.app.exit(result="export")
+            if not self.show_help:
+                event.app.exit(result="export")
 
         @bindings.add("r")
         def _refresh(event) -> None:
-            event.app.exit(result="refresh")
+            if not self.show_help:
+                event.app.exit(result="refresh")
 
         @bindings.add("q")
         @bindings.add("c-c")
@@ -370,6 +758,8 @@ class ModelBrowser:
             "badge.unit": "bold bg:#332912 #F5CE69",
             "badge.mode": "bold bg:#162E3B #7AD2E6",
             "badge.compare": "bold bg:#3B1E32 #FF80AB",
+            "badge.search": "bold bg:#1C3B2A #A5E887",
+            "badge.update": "bold bg:#3B2E12 #FFD166",
             "keys.cap": "bold #5CE1E6",
             "keys.desc": "#8EA6AC",
             "table.header": "bold #7BE0AD",
@@ -395,14 +785,16 @@ class ModelBrowser:
             "card.title": "bold #7BE0AD",
             "card.label": "#7A959B",
             "card.value": "#E0EBEA",
+            "help.key": "bold #5CE1E6",
+            "help.text": "#D0DDDC",
             "muted": "#7A959B",
         })
 
         layout = Layout(HSplit([
-            Window(FormattedTextControl(self._header), height=5, always_hide_cursor=True),
+            Window(FormattedTextControl(self._header), height=4, always_hide_cursor=True),
             Window(FormattedTextControl(self._row_fragments), wrap_lines=False, always_hide_cursor=True),
             Window(FormattedTextControl(self._detail_card), height=4, always_hide_cursor=True),
-            Window(FormattedTextControl(self._footer), height=1, always_hide_cursor=True),
+            Window(FormattedTextControl(self._footer), height=3, always_hide_cursor=True, wrap_lines=False),
         ]))
 
         return Application(
@@ -434,6 +826,8 @@ def choose_options(
         return [] if multiple else None
     index = next((i for i, value in enumerate(choices) if value.casefold() in selected_keys), 0)
     checked = {i for i, value in enumerate(choices) if value.casefold() in selected_keys}
+    if not multiple:
+        checked = {index}
     outcome: list[str] | None = None
     bindings = KeyBindings()
 
@@ -446,29 +840,58 @@ def choose_options(
     def _up(event) -> None:
         nonlocal index
         index = max(0, index - 1)
+        if not multiple:
+            checked.clear()
+            checked.add(index)
         event.app.invalidate()
 
     @bindings.add("down")
     def _down(event) -> None:
         nonlocal index
         index = min(len(choices) - 1, index + 1)
+        if not multiple:
+            checked.clear()
+            checked.add(index)
         event.app.invalidate()
 
     @bindings.add("home")
     def _home(event) -> None:
         nonlocal index
         index = 0
+        if not multiple:
+            checked.clear()
+            checked.add(index)
         event.app.invalidate()
 
     @bindings.add("end")
     def _end(event) -> None:
         nonlocal index
         index = len(choices) - 1
+        if not multiple:
+            checked.clear()
+            checked.add(index)
+        event.app.invalidate()
+
+    @bindings.add("pageup")
+    def _page_up(event) -> None:
+        nonlocal index
+        index = max(0, index - 10)
+        if not multiple:
+            checked.clear()
+            checked.add(index)
+        event.app.invalidate()
+
+    @bindings.add("pagedown")
+    def _page_down(event) -> None:
+        nonlocal index
+        index = min(len(choices) - 1, index + 10)
+        if not multiple:
+            checked.clear()
+            checked.add(index)
         event.app.invalidate()
 
     @bindings.add(" ")
     def _toggle(event) -> None:
-        nonlocal index
         if not multiple:
             checked.clear()
             checked.add(index)
@@ -498,19 +921,44 @@ def choose_options(
         event.app.exit()
 
     def render_choices() -> FormattedText:
+        width, height = _terminal_size()
+        box_width = min(width, 84)
+        content_width = max(20, box_width - 5)
+        max_visible = max(1, height - 9)
+        start = max(0, min(index - max_visible // 2, len(choices) - max_visible))
+        stop = min(len(choices), start + max_visible)
+        help_text = (
+            "Frecce sposta • Spazio seleziona • A tutti • Invio conferma • Esc annulla"
+            if multiple
+            else "Frecce sposta • Invio conferma • Esc annulla"
+        )
+
         fragments: list[tuple[str, str]] = [
-            ("class:box", " ╭────────────────────────────────────────────────────────╮\n"),
-            ("class:title", f" │  {title:<52}│\n"),
-            ("class:help", " │  Frecce sposta • Spazio seleziona • Invio conferma     │\n"),
-            ("class:box", " ╰────────────────────────────────────────────────────────╯\n\n"),
+            ("class:box", " ╭" + "─" * (box_width - 3) + "╮\n"),
+            ("class:box", " │ "),
         ]
-        for choice_index, value in enumerate(choices):
+        fragments.extend(_fit_segments([("class:title", f" {title}")], content_width, "class:box"))
+        fragments.append(("class:box", " │\n"))
+        fragments.append(("class:box", " │ "))
+        fragments.extend(_fit_segments([("class:help", f" {help_text}")], content_width, "class:box"))
+        fragments.append(("class:box", " │\n"))
+        fragments.append(("class:box", " │ "))
+        position = f" {index + 1}/{len(choices)} • {len(checked)} selezionati"
+        fragments.extend(_fit_segments([("class:help", position)], content_width, "class:box"))
+        fragments.append(("class:box", " │\n"))
+        fragments.append(("class:box", " ╰" + "─" * (box_width - 3) + "╯\n\n"))
+
+        for choice_index in range(start, stop):
+            value = choices[choice_index]
             marker = "›" if choice_index == index else " "
             checkmark = "[✓]" if choice_index in checked else "[ ]"
+            line = _pad(f"  {marker} {checkmark} {value}", content_width)
             if choice_index == index:
-                fragments.append(("class:selected", f"  {marker} {checkmark} {value} \n"))
+                fragments.append(("class:selected", line + "\n"))
             else:
-                fragments.append(("class:row", f"  {marker} {checkmark} {value}\n"))
+                fragments.append(("class:row", line + "\n"))
+        if stop < len(choices):
+            fragments.append(("class:help", "  … altre opzioni sotto; usa ↓ o PageDown\n"))
         return FormattedText(fragments)
 
     style = Style.from_dict({

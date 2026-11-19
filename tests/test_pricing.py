@@ -55,3 +55,27 @@ def test_ignores_tables_without_model_input_and_output_headers() -> None:
     html = PAGE.replace("<th>Output</th>", "<th>Response</th>")
     with pytest.raises(ValueError, match="No GitHub Copilot pricing tables"):
         parse_pricing_html(html)
+
+
+def test_negative_prices_are_treated_as_missing() -> None:
+    html = PAGE.replace("<td>$1.00</td>", "<td>-$1.00</td>")
+
+    record = parse_pricing_html(html)[0]
+
+    assert record.input_cost_credits is None
+    assert record.input_cost_usd is None
+
+
+def test_duplicate_rows_across_tables_are_removed() -> None:
+    duplicate = """
+    <p>1 AI credit = $0.01 USD.</p>
+    <p>All prices are per 1 million tokens.</p>
+    <table><tr><th>Model</th><th>Input</th><th>Output</th></tr>
+      <tr><td>Example Model</td><td>$1.00</td><td>$4.00</td></tr></table>
+    <table><tr><th>Model</th><th>Input</th><th>Output</th></tr>
+      <tr><td>Example Model</td><td>$1.00</td><td>$4.00</td></tr></table>
+    """
+
+    records = parse_pricing_html(duplicate)
+
+    assert [record.name for record in records] == ["Example Model"]

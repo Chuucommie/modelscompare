@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "modelscompare"
-version = "0.1.0"
-description = "Browse live GitHub Copilot input, cached, and output pricing"
+version = "0.2.0"
+description = "Browse live GitHub Copilot input, cached read, cached write, and output pricing"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,6 +22,12 @@ build = ["build>=1.2", "pyinstaller>=6.11"]
 
 [project.scripts]
 modelscompare = "modelscompare.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Chuucommie/modelscompare"
+Repository = "https://github.com/Chuucommie/modelscompare"
+Issues = "https://github.com/Chuucommie/modelscompare/issues"
+Releases = "https://github.com/Chuucommie/modelscompare/releases"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -37,7 +37,23 @@ def test_preferences_defaults_have_no_blended_setting() -> None:
 
     assert preferences.display_unit == "usd"
     assert preferences.sort_by == "input"
+    assert preferences.check_updates
+    assert preferences.auto_update
     assert not hasattr(preferences, "blended_cost")
+
+
+def test_old_config_without_update_keys_still_loads(tmp_path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({
+        "favorite_models": ["GPT Example"],
+        "setup_completed": True,
+    }), encoding="utf-8")
+
+    loaded = load_preferences(path)
+
+    assert loaded.favorite_models == ["GPT Example"]
+    assert loaded.check_updates is True
+    assert loaded.auto_update is True
 
 
 def test_invalid_saved_preferences_are_rejected(tmp_path) -> None:

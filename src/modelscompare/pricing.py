@@ -56,11 +56,13 @@ def _cell_text(cell: Tag) -> str:
 def _parse_price(value: str) -> Decimal | None:
     if not value or "not applicable" in value.casefold():
         return None
-    match = re.search(r"(?<![\w.])-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?", value)
+    if re.search(r"(?<![\w.])-\s*\$?\s*\d", value):
+        return None
+    match = re.search(r"(?<![\w.])\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?", value)
     if match is None:
         return None
     try:
-        return Decimal(match.group(0).replace(",", ""))
+        return Decimal(match.group(0).replace("$", "").replace(",", "").strip())
     except InvalidOperation:
         return None
 
@@ -163,4 +165,27 @@ def parse_pricing_html(html: str) -> list[ModelPricing]:
 
     if not records:
         raise ValueError("No GitHub Copilot pricing tables with Model, Input, and Output columns were found.")
-    return records
+    return _deduplicate(records)
+
+
+def _deduplicate(records: list[ModelPricing]) -> list[ModelPricing]:
+    """Remove rows repeated across several pricing tables on the same page."""
+
+    seen: set[tuple[object, ...]] = set()
+    unique: list[ModelPricing] = []
+    for record in records:
+        key = (
+            record.name.casefold(),
+            record.provider.casefold(),
+            record.tier.casefold(),
+            record.threshold.casefold(),
+            record.input_cost_credits,
+            record.output_cost_credits,
+            record.cached_input_cost_credits,
+            record.cache_write_cost_credits,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(record)
+    return unique
